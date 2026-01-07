@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Convertitore LaTeX a Epub</title>
+    <style>
+        body { font-family: sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+        .box { border: 2px dashed #ccc; padding: 20px; text-align: center; }
+        .btn { background-color: #007bff; color: white; padding: 10px 20px; border: none; cursor: pointer; }
+        .btn:hover { background-color: #0056b3; }
+        .error { background-color: #f8d7da; color: #721c24; padding: 10px; margin-top: 20px; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h1>Convertitore LaTeX -> Epub</h1>
+    
+    <div class="box">
+        <form method="post" enctype="multipart/form-data">
+            <p>Seleziona il tuo file .tex:</p>
+            <input type="file" name="file" accept=".tex" required>
+            <br><br>
+            <button type="submit" class="btn">Converti e Scarica</button>
+        </form>
+    </div>
+
+    <!-- Sezione per mostrare i messaggi (es. errori di Pandoc) -->
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        {% for message in messages %}
+          <div class="error">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+</body>
+</html>
