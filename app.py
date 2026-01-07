@@ -3,7 +3,8 @@ import re
 import subprocess
 from flask import Flask, render_template, request, send_file, flash, redirect, url_for
 
-app = Flask(__name__)
+# Impostiamo template_folder='.' per cercare i file HTML nella cartella corrente (insieme ad app.py)
+app = Flask(__name__, template_folder='.')
 app.secret_key = "supersegreto"  # Necessario per i messaggi flash (errori/info)
 
 # Configuriamo le cartelle
