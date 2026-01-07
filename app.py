@@ -37,6 +37,10 @@ def index():
             # Questo assicura che Pandoc si concentri solo su testo e formule
             content = re.sub(r'\\begin\s*\{tikzpicture\}.*?\\end\s*\{tikzpicture\}', '', content, flags=re.DOTALL)
 
+            # Rimuoviamo anche le figure e includegraphics per evitare errori di file mancanti (immagini non caricate)
+            content = re.sub(r'\\begin\s*\{figure\}.*?\\end\s*\{figure\}', '', content, flags=re.DOTALL)
+            content = re.sub(r'\\includegraphics(\[.*?\])?\{.*?\}', '', content)
+
             # Correzione Extra: Rimuove i doppi dollari $$ attorno alle equation (errore comune che blocca Pandoc)
             content = re.sub(r'\$\$\s*(\\begin\{equation\}.*?\\end\{equation\})\s*\$\$', r'\1', content, flags=re.DOTALL)
 
@@ -49,9 +53,20 @@ def index():
             output_filename = file.filename.replace('.tex', '.epub')
             output_path = os.path.join(DOWNLOAD_FOLDER, output_filename)
 
+            # Titolo di fallback basato sul nome del file (per evitare errori di validazione se manca \title)
+            title_fallback = file.filename.replace('.tex', '').replace('_', ' ')
+
             # 3. Esegui Pandoc
-            # Usiamo --mathml che è lo standard W3C per le formule negli EPUB
-            cmd = ['pandoc', input_path, '-f', 'latex', '-t', 'epub', '--mathml', '--standalone', '-o', output_path]
+            # -t epub3: specifica la versione 3 (più compatibile)
+            # --metadata title=...: assicura che ci sia un titolo (fondamentale per Kindle/eReader)
+            cmd = [
+                'pandoc', input_path, 
+                '-f', 'latex', 
+                '-t', 'epub3', 
+                '--mathml', 
+                '--metadata', f'title={title_fallback}',
+                '-o', output_path
+            ]
 
             try:
                 # Eseguiamo il comando
