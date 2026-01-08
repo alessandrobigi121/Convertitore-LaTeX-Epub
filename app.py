@@ -1,6 +1,7 @@
 import os
 import re
 import subprocess
+import zipfile
 from flask import Flask, render_template, request, send_file, flash, redirect, url_for
 from werkzeug.utils import secure_filename
 
@@ -28,23 +29,61 @@ def index():
             flash('Nessun file selezionato')
             return redirect(request.url)
 
-        if file and file.filename.endswith('.tex'):
+        if file and (file.filename.endswith('.tex') or file.filename.endswith('.zip')):
             # Sanitizziamo il nome del file per sicurezza
             original_filename = file.filename
             filename = secure_filename(original_filename)
             
-            # Leggiamo il contenuto per rimuovere i disegni (TikZ) che causano errori
-            # errors='replace' evita crash se il file ha caratteri strani non UTF-8
-            content = file.read().decode('utf-8', errors='replace')
+            # Percorsi assoluti per gestire correttamente la working directory di Pandoc
+            base_dir = os.path.abspath(os.path.dirname(__file__))
+            abs_upload_folder = os.path.join(base_dir, UPLOAD_FOLDER)
+            abs_download_folder = os.path.join(base_dir, DOWNLOAD_FOLDER)
+            
+            input_path = os.path.join(abs_upload_folder, filename)
+            file.save(input_path)
+
+            # Variabili per gestire ZIP vs TEX singolo
+            tex_file_path = input_path
+            work_dir = abs_upload_folder
+            keep_images = False
+
+            # Gestione ZIP (Estrazione)
+            if filename.endswith('.zip'):
+                extract_folder = os.path.join(abs_upload_folder, os.path.splitext(filename)[0])
+                os.makedirs(extract_folder, exist_ok=True)
+                with zipfile.ZipFile(input_path, 'r') as zip_ref:
+                    zip_ref.extractall(extract_folder)
+                
+                # Cerchiamo il file .tex principale nello zip
+                found_tex = False
+                for root, dirs, files in os.walk(extract_folder):
+                    for f in files:
+                        if f.endswith('.tex'):
+                            tex_file_path = os.path.join(root, f)
+                            work_dir = root # Pandoc deve girare qui per trovare le immagini
+                            found_tex = True
+                            break
+                    if found_tex: break
+                
+                if not found_tex:
+                    flash('Nessun file .tex trovato nello ZIP.')
+                    return redirect(request.url)
+                
+                keep_images = True # Se è uno zip, presumiamo ci siano le immagini
+
+            # Leggiamo il contenuto del file .tex identificato
+            with open(tex_file_path, 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read()
             
             # Rimuoviamo i blocchi \begin{tikzpicture}...\end{tikzpicture}
             # \s* gestisce eventuali spazi extra (es. \begin {tikzpicture})
             # Questo assicura che Pandoc si concentri solo su testo e formule
             content = re.sub(r'\\begin\s*\{tikzpicture\}.*?\\end\s*\{tikzpicture\}', '', content, flags=re.DOTALL)
 
-            # Rimuoviamo anche le figure e includegraphics per evitare errori di file mancanti (immagini non caricate)
-            content = re.sub(r'\\begin\s*\{figure\}.*?\\end\s*\{figure\}', '', content, flags=re.DOTALL)
-            content = re.sub(r'\\includegraphics(\[.*?\])?\{.*?\}', '', content)
+            # Rimuoviamo le immagini SOLO se non siamo in modalità ZIP (quindi mancano i file sorgente)
+            if not keep_images:
+                content = re.sub(r'\\begin\s*\{figure\}.*?\\end\s*\{figure\}', '', content, flags=re.DOTALL)
+                content = re.sub(r'\\includegraphics(\[.*?\])?\{.*?\}', '', content)
 
             # Correzione Extra: Rimuove i doppi dollari $$ attorno alle equation (errore comune che blocca Pandoc)
             content = re.sub(r'\$\$\s*(\\begin\{equation\}.*?\\end\{equation\})\s*\$\$', r'\1', content, flags=re.DOTALL)
@@ -56,14 +95,32 @@ def index():
             author_match = re.search(r'\\author\{((?:[^{}]|\{[^{}]*\})*)\}', content, re.DOTALL)
             date_match = re.search(r'\\date\{((?:[^{}]|\{[^{}]*\})*)\}', content, re.DOTALL)
 
-            # 2. Salva il file .tex pulito
-            input_path = os.path.join(UPLOAD_FOLDER, filename)
-            with open(input_path, 'w', encoding='utf-8') as f:
+            # Salva il file .tex pulito (sovrascrivendo quello estratto o caricato)
+            with open(tex_file_path, 'w', encoding='utf-8') as f:
                 f.write(content)
             
-            # Nome del file di output
-            output_filename = filename.replace('.tex', '.epub')
-            output_path = os.path.join(DOWNLOAD_FOLDER, output_filename)
+            # Recuperiamo il formato desiderato dal form (default: epub)
+            # Nota: Assicurati di avere <select name="output_format"> nel tuo HTML
+            target_format = request.form.get('output_format', 'epub')
+            
+            # Nome base per l'output (dal nome del file originale, senza estensione)
+            output_base_name = os.path.splitext(original_filename)[0]
+            
+            # Configuriamo estensione e argomenti in base al formato
+            if target_format == 'docx':
+                output_filename = output_base_name + '.docx'
+                # Per Word non usiamo --mathml ma lasciamo la gestione standard
+                pandoc_output_args = ['-t', 'docx']
+            else:
+                # Default: EPUB
+                output_filename = output_base_name + '.epub'
+                pandoc_output_args = ['-t', 'epub3', '--mathml']
+                # Aggiungiamo CSS personalizzato se esiste
+                css_path = os.path.join(base_dir, 'epub.css')
+                if os.path.exists(css_path):
+                    pandoc_output_args.extend(['--css', css_path])
+
+            output_path = os.path.join(abs_download_folder, output_filename)
 
             # Determinazione del Titolo
             epub_title = None
@@ -77,15 +134,14 @@ def index():
 
             if not epub_title:
                 # Fallback: nome del file pulito se manca \title o se il contenuto era solo formattazione
-                epub_title = original_filename.replace('.tex', '').replace('_', ' ')
+                epub_title = output_base_name.replace('_', ' ')
 
             # 3. Esegui Pandoc
             # -t epub3: specifica la versione 3 (più compatibile)
             cmd = [
-                'pandoc', input_path, 
+                'pandoc', tex_file_path, 
                 '-f', 'latex', 
-                '-t', 'epub3', 
-                '--mathml', 
+            ] + pandoc_output_args + [
                 '--metadata', f'title={epub_title}',
                 '-o', output_path
             ]
@@ -98,7 +154,8 @@ def index():
 
             try:
                 # Eseguiamo il comando
-                result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                # cwd=work_dir è fondamentale per far trovare le immagini relative (es. img/foto.jpg) a Pandoc
+                result = subprocess.run(cmd, capture_output=True, text=True, check=True, cwd=work_dir)
                 
                 # Se ha successo, invia il file all'utente
                 return send_file(output_path, as_attachment=True)
@@ -109,7 +166,7 @@ def index():
                 flash(error_message)
                 return redirect(url_for('index'))
         else:
-            flash('Per favore carica un file .tex valido.')
+            flash('Per favore carica un file .tex o .zip valido.')
             return redirect(request.url)
 
     return render_template('index.html')

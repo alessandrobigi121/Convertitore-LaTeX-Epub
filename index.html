@@ -110,6 +110,20 @@
             font-size: 14px;
             text-align: left;
         }
+
+        .options-area {
+            margin-top: 20px;
+            text-align: left;
+        }
+        
+        select {
+            width: 100%;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            background-color: white;
+            font-size: 16px;
+        }
     </style>
 </head>
 <body>
@@ -119,11 +133,18 @@
         <form method="post" enctype="multipart/form-data" id="uploadForm">
             <div class="upload-area" id="dropZone">
                 <div class="upload-icon">☁️</div>
-                <p>Trascina qui il tuo file .tex<br>oppure clicca per selezionarlo</p>
-                <input type="file" name="file" accept=".tex" required id="fileInput">
+                <p>Trascina qui il file .tex o .zip<br>oppure clicca per selezionarlo</p>
+                <input type="file" name="file" accept=".tex,.zip" required id="fileInput">
             </div>
             
             <div class="file-info" id="fileInfo"></div>
+
+            <div class="options-area">
+                <select name="output_format">
+                    <option value="epub">eBook (EPUB) - Consigliato</option>
+                    <option value="docx">Microsoft Word (DOCX)</option>
+                </select>
+            </div>
 
             <button type="submit" class="btn">Converti e Scarica</button>
         </form>
@@ -193,5 +214,6 @@
             }
         }
     </script>
+
 </body>
 </html>

@@ -1,0 +1,35 @@
+/* Stile base per EPUB generati da LaTeX */
+
+body {
+    font-family: "Georgia", "Times New Roman", serif;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0 1em;
+    color: #1a1a1a;
+    background-color: #ffffff;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-weight: bold;
+    color: #2c3e50;
+    margin-top: 1.5em;
+    margin-bottom: 0.5em;
+}
+
+h1 { font-size: 2em; border-bottom: 2px solid #eee; padding-bottom: 0.2em; }
+h2 { font-size: 1.6em; }
+h3 { font-size: 1.3em; }
+
+p {
+    margin-bottom: 1em;
+    text-align: justify;
+}
+
+/* Migliora la visualizzazione delle immagini */
+img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 1em auto;
+}
