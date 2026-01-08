@@ -2,6 +2,7 @@ import os
 import re
 import subprocess
 from flask import Flask, render_template, request, send_file, flash, redirect, url_for
+from werkzeug.utils import secure_filename
 
 # Impostiamo template_folder='.' per cercare i file HTML nella cartella corrente (insieme ad app.py)
 app = Flask(__name__, template_folder='.')
@@ -28,6 +29,10 @@ def index():
             return redirect(request.url)
 
         if file and file.filename.endswith('.tex'):
+            # Sanitizziamo il nome del file per sicurezza
+            original_filename = file.filename
+            filename = secure_filename(original_filename)
+            
             # Leggiamo il contenuto per rimuovere i disegni (TikZ) che causano errori
             # errors='replace' evita crash se il file ha caratteri strani non UTF-8
             content = file.read().decode('utf-8', errors='replace')
@@ -44,29 +49,52 @@ def index():
             # Correzione Extra: Rimuove i doppi dollari $$ attorno alle equation (errore comune che blocca Pandoc)
             content = re.sub(r'\$\$\s*(\\begin\{equation\}.*?\\end\{equation\})\s*\$\$', r'\1', content, flags=re.DOTALL)
 
+            # Estrazione Metadati (Titolo, Autore, Data) dal contenuto LaTeX
+            # Usiamo una regex che supporta un livello di annidamento di graffe (es. \textbf{...})
+            # Questo ci permette di leggere \title{Il mio titolo} anche se è su più righe
+            title_match = re.search(r'\\title\{((?:[^{}]|\{[^{}]*\})*)\}', content, re.DOTALL)
+            author_match = re.search(r'\\author\{((?:[^{}]|\{[^{}]*\})*)\}', content, re.DOTALL)
+            date_match = re.search(r'\\date\{((?:[^{}]|\{[^{}]*\})*)\}', content, re.DOTALL)
+
             # 2. Salva il file .tex pulito
-            input_path = os.path.join(UPLOAD_FOLDER, file.filename)
+            input_path = os.path.join(UPLOAD_FOLDER, filename)
             with open(input_path, 'w', encoding='utf-8') as f:
                 f.write(content)
             
             # Nome del file di output
-            output_filename = file.filename.replace('.tex', '.epub')
+            output_filename = filename.replace('.tex', '.epub')
             output_path = os.path.join(DOWNLOAD_FOLDER, output_filename)
 
-            # Titolo di fallback basato sul nome del file (per evitare errori di validazione se manca \title)
-            title_fallback = file.filename.replace('.tex', '').replace('_', ' ')
+            # Determinazione del Titolo
+            epub_title = None
+            if title_match:
+                # Puliamo il titolo da comandi LaTeX (es. \Huge) per evitare titoli vuoti o "sporchi"
+                raw_title = title_match.group(1)
+                clean_title = re.sub(r'\\[a-zA-Z]+', '', raw_title) # Rimuove \Huge, \bfseries ecc.
+                clean_title = re.sub(r'[{}]', '', clean_title).strip()
+                if clean_title:
+                    epub_title = clean_title
+
+            if not epub_title:
+                # Fallback: nome del file pulito se manca \title o se il contenuto era solo formattazione
+                epub_title = original_filename.replace('.tex', '').replace('_', ' ')
 
             # 3. Esegui Pandoc
             # -t epub3: specifica la versione 3 (più compatibile)
-            # --metadata title=...: assicura che ci sia un titolo (fondamentale per Kindle/eReader)
             cmd = [
                 'pandoc', input_path, 
                 '-f', 'latex', 
                 '-t', 'epub3', 
                 '--mathml', 
-                '--metadata', f'title={title_fallback}',
+                '--metadata', f'title={epub_title}',
                 '-o', output_path
             ]
+
+            # Aggiungiamo Autore e Data se presenti nel file
+            if author_match:
+                cmd.extend(['--metadata', f'author={author_match.group(1).strip()}'])
+            if date_match:
+                cmd.extend(['--metadata', f'date={date_match.group(1).strip()}'])
 
             try:
                 # Eseguiamo il comando
