@@ -57,8 +57,13 @@ def index():
                 # Cerchiamo il file .tex principale nello zip
                 found_tex = False
                 for root, dirs, files in os.walk(extract_folder):
+                    # Ignoriamo la cartella di sistema __MACOSX creata dai Mac
+                    if '__MACOSX' in root:
+                        continue
+
                     for f in files:
-                        if f.endswith('.tex'):
+                        # Ignoriamo i file fantasma che iniziano con ._ (metadati Mac)
+                        if f.endswith('.tex') and not f.startswith('._'):
                             tex_file_path = os.path.join(root, f)
                             work_dir = root # Pandoc deve girare qui per trovare le immagini
                             found_tex = True
@@ -74,6 +79,10 @@ def index():
             # Leggiamo il contenuto del file .tex identificato
             with open(tex_file_path, 'r', encoding='utf-8', errors='replace') as f:
                 content = f.read()
+            
+            # FIX: Rimuoviamo caratteri di controllo non validi per XML (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F)
+            # Questo risolve errori come "PCDATA invalid Char value 5" e "Char 0x0 out of allowed range"
+            content = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', content)
             
             # Rimuoviamo i blocchi \begin{tikzpicture}...\end{tikzpicture}
             # \s* gestisce eventuali spazi extra (es. \begin {tikzpicture})
@@ -158,7 +167,14 @@ def index():
                 result = subprocess.run(cmd, capture_output=True, text=True, check=True, cwd=work_dir)
                 
                 # Se ha successo, invia il file all'utente
-                return send_file(output_path, as_attachment=True)
+                response = send_file(output_path, as_attachment=True)
+
+                # Impostiamo un cookie per segnalare al browser che il download è iniziato
+                token = request.form.get('download_token')
+                if token:
+                    response.set_cookie('download_token', token, max_age=60)
+                
+                return response
 
             except subprocess.CalledProcessError as e:
                 # 4. Gestione Errori: Mostra l'errore (spesso make4ht scrive in stdout)

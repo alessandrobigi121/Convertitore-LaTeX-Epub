@@ -124,6 +124,29 @@
             background-color: white;
             font-size: 16px;
         }
+
+        /* Stile Barra di Progresso */
+        .progress-container {
+            width: 100%;
+            background-color: #e0e0e0;
+            border-radius: 25px;
+            margin-top: 25px;
+            display: none; /* Nascosto di default */
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            width: 0%;
+            height: 25px;
+            background-color: var(--primary-color);
+            text-align: center;
+            line-height: 25px;
+            color: white;
+            border-radius: 25px;
+            transition: width 0.2s ease;
+            font-size: 14px;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -146,6 +169,13 @@
                 </select>
             </div>
 
+            <!-- Campo nascosto per il token di download -->
+            <input type="hidden" name="download_token" id="downloadToken">
+
+            <div class="progress-container" id="progressContainer">
+                <div class="progress-bar" id="progressBar">0%</div>
+            </div>
+
             <button type="submit" class="btn">Converti e Scarica</button>
         </form>
 
@@ -163,6 +193,10 @@
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
         const fileInfo = document.getElementById('fileInfo');
+        const uploadForm = document.getElementById('uploadForm');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        const btn = document.querySelector('.btn');
 
         // Gestione visuale del Drag & Drop
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
@@ -213,6 +247,57 @@
                 fileInfo.style.display = 'block';
             }
         }
+
+        // Gestione animazione barra di progresso al submit
+        uploadForm.addEventListener('submit', function() {
+            // Generiamo un token unico basato sull'orario
+            const token = new Date().getTime().toString();
+            document.getElementById('downloadToken').value = token;
+
+            // Mostra la barra e disabilita il bottone
+            progressContainer.style.display = 'block';
+            btn.disabled = true;
+            btn.textContent = 'Elaborazione in corso...';
+            
+            let width = 0;
+            
+            // 1. Animazione "Asintotica": parte veloce, poi rallenta ma non si ferma mai del tutto
+            const progressInterval = setInterval(function() {
+                if (width < 90) {
+                    // Aumenta del 5% della distanza rimanente (effetto rallentamento naturale)
+                    width += (90 - width) * 0.05;
+                } else {
+                    // Avanza pianissimo dopo il 90%
+                    width += 0.1;
+                }
+                // Cap al 99% finché non finisce
+                if (width > 99) width = 99;
+                
+                progressBar.style.width = Math.round(width) + '%';
+                progressBar.textContent = Math.round(width) + '%';
+            }, 100);
+
+            // 2. Controllo del Cookie: verifica se il server ha risposto
+            const cookieInterval = setInterval(function() {
+                if (document.cookie.includes('download_token=' + token)) {
+                    clearInterval(progressInterval);
+                    clearInterval(cookieInterval);
+                    
+                    // Download partito! Portiamo la barra al 100%
+                    progressBar.style.width = '100%';
+                    progressBar.textContent = '100% - Completato!';
+                    progressBar.style.backgroundColor = '#4caf50'; // Verde successo
+                    
+                    // Riabilitiamo il bottone dopo un secondo
+                    setTimeout(function() {
+                        btn.disabled = false;
+                        btn.textContent = 'Converti e Scarica';
+                        // Pulizia del cookie
+                        document.cookie = 'download_token=; Max-Age=-99999999;';
+                    }, 1000);
+                }
+            }, 500); // Controlla ogni mezzo secondo
+        });
     </script>
 
 </body>
